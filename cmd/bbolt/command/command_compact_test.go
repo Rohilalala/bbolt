@@ -1,10 +1,13 @@
 package command_test
 
 import (
+	"bytes"
 	crypto "crypto/rand"
 	"errors"
 	"fmt"
 	"math/rand"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -98,4 +101,46 @@ func TestCompactCommand_NoArgs(t *testing.T) {
 	rootCmd.SetArgs([]string{"compact"})
 	err := rootCmd.Execute()
 	require.ErrorContains(t, err, expErr.Error())
+}
+
+func TestCompactCommand_SourceAsDestination(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		hardlink bool
+	}{
+		{name: "same path"},
+		{name: "hard link", hardlink: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			db := btesting.MustCreateDB(t)
+			err := db.Update(func(tx *bolt.Tx) error {
+				b, err := tx.CreateBucket([]byte("widgets"))
+				if err != nil {
+					return err
+				}
+				return b.Put([]byte("foo"), []byte("bar"))
+			})
+			require.NoError(t, err)
+			require.NoError(t, db.Close())
+
+			before, err := os.ReadFile(db.Path())
+			require.NoError(t, err)
+			dstPath := db.Path()
+			if tc.hardlink {
+				dstPath = filepath.Join(t.TempDir(), "db-link")
+				if err := os.Link(db.Path(), dstPath); err != nil {
+					t.Skipf("hard links unavailable: %v", err)
+				}
+			}
+
+			rootCmd := command.NewRootCommand()
+			rootCmd.SetArgs([]string{"compact", "-o", dstPath, db.Path()})
+			err = rootCmd.Execute()
+			require.ErrorContains(t, err, "same database")
+
+			after, err := os.ReadFile(db.Path())
+			require.NoError(t, err)
+			require.True(t, bytes.Equal(before, after), "compact changed the source database")
+		})
+	}
 }

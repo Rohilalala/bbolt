@@ -60,6 +60,9 @@ func (o *compactOptions) Run(cmd *cobra.Command, srcPath string) (err error) {
 	if err != nil {
 		return err
 	}
+	if dstInfo, err := os.Stat(o.dstPath); err == nil && os.SameFile(fi, dstInfo) {
+		return errors.New("source and destination are the same database file")
+	}
 	initialSize := fi.Size()
 
 	// open source database.
