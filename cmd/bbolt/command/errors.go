@@ -13,6 +13,10 @@ var (
 	// ErrBucketRequired is returned when a bucket is not specified.
 	ErrBucketRequired = errors.New("bucket required")
 
+	// ErrCompactSourceIsDestination is returned when the compact destination is
+	// the source database file itself.
+	ErrCompactSourceIsDestination = errors.New("source and destination are the same database file")
+
 	// ErrInvalidPageArgs is returned when Page cmd receives pageIds and all option is true.
 	ErrInvalidPageArgs = errors.New("invalid args: either use '--all' or 'pageid...'")
 

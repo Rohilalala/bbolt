@@ -105,11 +105,41 @@ func TestCompactCommand_NoArgs(t *testing.T) {
 
 func TestCompactCommand_SourceAsDestination(t *testing.T) {
 	for _, tc := range []struct {
-		name     string
-		hardlink bool
+		name string
+		// dst returns the destination path for the given source path.
+		dst func(t *testing.T, src string) string
 	}{
-		{name: "same path"},
-		{name: "hard link", hardlink: true},
+		{
+			name: "same path",
+			dst:  func(_ *testing.T, src string) string { return src },
+		},
+		{
+			name: "relative path",
+			dst: func(t *testing.T, src string) string {
+				t.Chdir(filepath.Dir(src))
+				return filepath.Base(src)
+			},
+		},
+		{
+			name: "hard link",
+			dst: func(t *testing.T, src string) string {
+				dst := filepath.Join(t.TempDir(), "db-link")
+				if err := os.Link(src, dst); err != nil {
+					t.Skipf("hard links unavailable: %v", err)
+				}
+				return dst
+			},
+		},
+		{
+			name: "symbolic link",
+			dst: func(t *testing.T, src string) string {
+				dst := filepath.Join(t.TempDir(), "db-symlink")
+				if err := os.Symlink(src, dst); err != nil {
+					t.Skipf("symbolic links unavailable: %v", err)
+				}
+				return dst
+			},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			db := btesting.MustCreateDB(t)
@@ -125,18 +155,12 @@ func TestCompactCommand_SourceAsDestination(t *testing.T) {
 
 			before, err := os.ReadFile(db.Path())
 			require.NoError(t, err)
-			dstPath := db.Path()
-			if tc.hardlink {
-				dstPath = filepath.Join(t.TempDir(), "db-link")
-				if err := os.Link(db.Path(), dstPath); err != nil {
-					t.Skipf("hard links unavailable: %v", err)
-				}
-			}
+			dstPath := tc.dst(t, db.Path())
 
 			rootCmd := command.NewRootCommand()
 			rootCmd.SetArgs([]string{"compact", "-o", dstPath, db.Path()})
 			err = rootCmd.Execute()
-			require.ErrorContains(t, err, "same database")
+			require.ErrorIs(t, err, command.ErrCompactSourceIsDestination)
 
 			after, err := os.ReadFile(db.Path())
 			require.NoError(t, err)
